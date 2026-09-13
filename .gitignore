@@ -1,0 +1,16 @@
+# Secrets & Environment Variables
+.env
+*.env
+
+# Local SQLite Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python Cache & IDEs
+__pycache__/
+*.pyc
+venv/
+.venv/
+.vscode/
+.idea/
