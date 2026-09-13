@@ -8,10 +8,10 @@
 
 **The 4 Agents:**
 
-1.  **Manager (The Boss):** Breaks the user's question into sub-questions and decides which tools to use.
-2.  **Search (The Librarian):** Finds facts using Wikipedia, arXiv, and web search. It saves evidence to a database rather than passing large text around.
-3.  **Synthesizer (The Writer):** Writes a structured draft using the evidence found.
-4.  **Fact-Checker (The Critic):** An LLM-powered agent that reviews the draft to ensure every claim is backed by the evidence.
+1.  **Manager:** Breaks the user's question into sub-questions and decides which tools to use.
+2.  **Search:** Finds facts using Wikipedia, arXiv, and web search. It saves evidence to a database rather than passing large text around.
+3.  **Synthesizer:** Writes a structured draft using the evidence found.
+4.  **Fact-Checker:** An LLM-powered agent that reviews the draft to ensure every claim is backed by the evidence.
 
 ---
 
