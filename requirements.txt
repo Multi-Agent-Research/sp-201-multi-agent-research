@@ -1,0 +1,6 @@
+# SP-201 Multi-Agent Research
+# Python 3.10 or newer (google-adk requires it)
+# Install: pip install -r requirements.txt
+
+google-adk==2.9.2
+pydantic==2.13.5
