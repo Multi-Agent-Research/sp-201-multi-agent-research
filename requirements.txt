@@ -4,3 +4,7 @@
 
 google-adk==2.9.2
 pydantic==2.13.5
+
+# Retrieval libraries imported by search_agent.py
+wikipedia==1.4.0
+duckduckgo-search==8.1.1
