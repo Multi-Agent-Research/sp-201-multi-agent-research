@@ -1,12 +1,16 @@
+import os
 import sqlite3
 import uuid
+from pathlib import Path
 from pydantic import BaseModel, Field
 
-# Database Initialization
+# Database Configuration & Absolute Path
+   
+DB_PATH = Path(__file__).resolve().parent / "evidence_store.db"
 
 def init_db():
-    """Creates the SQLite evidence table if it does not already exist."""
-    conn = sqlite3.connect("evidence_store.db")
+    """Creates the SQLite evidence table at a single, fixed path."""
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS evidence (
@@ -24,6 +28,7 @@ def init_db():
 
 
 # Pydantic Schemas
+
 class EvidenceMetadata(BaseModel):
     evidence_id: str = Field(description="Unique identifier stored in SQLite")
     title: str = Field(description="Title of the source article or document")
@@ -38,9 +43,9 @@ class SearchResponse(BaseModel):
 # Database Persistence Helper
 
 def store_evidence(query_topic: str, source_type: str, title: str, url: str, content: str) -> str:
-    """Inserts raw search text into SQLite and returns a lightweight reference ID."""
+    """Inserts raw search text into SQLite using DB_PATH and returns a reference ID."""
     evidence_id = f"EVID-{uuid.uuid4().hex[:8].upper()}"
-    conn = sqlite3.connect("evidence_store.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -56,30 +61,84 @@ def store_evidence(query_topic: str, source_type: str, title: str, url: str, con
 # Search Tool Functions
 
 def fetch_wikipedia_source(sub_question: str) -> EvidenceMetadata:
-    """Fetches full content from Wikipedia, persists it, and returns metadata."""
-    raw_text = f"Full extracted content for query: {sub_question}. Wikipedia detailed context..." 
-    title = f"Wikipedia entry for {sub_question}"
-    url = f"https://en.wikipedia.org/wiki/{sub_question.replace(' ', '_')}"
-    
+    """Performs a 2-step Wikipedia search to locate the relevant page and extract text."""
+    try:
+        import wikipedia
+        search_results = wikipedia.search(sub_question)
+        if search_results:
+            page_title = search_results[0]
+            page = wikipedia.page(page_title, auto_suggest=False)
+            title = page.title
+            url = page.url
+            raw_text = page.content[:3000]
+        else:
+            title = f"No Wikipedia page found for {sub_question}"
+            url = ""
+            raw_text = "No content retrieved."
+    except Exception as e:
+        title = f"Wikipedia search: {sub_question}"
+        url = f"https://en.wikipedia.org/wiki/Special:Search?search={sub_question.replace(' ', '+')}"
+        raw_text = f"[Wikipedia API Error/Fallback: {str(e)}]"
+
     eid = store_evidence(sub_question, "wikipedia", title, url, raw_text)
     return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="wikipedia")
 
 def fetch_arxiv_source(sub_question: str) -> EvidenceMetadata:
-    """Fetches full paper summary/text from arXiv, persists it, and returns metadata."""
-    raw_text = f"Full paper abstract and content for query: {sub_question}. arXiv paper details..." 
-    title = f"arXiv paper on {sub_question}"
-    url = f"https://arxiv.org/abs/2401.{uuid.uuid4().hex[:4]}"
-    
+    """Queries arXiv API for academic papers related to the sub-question."""
+    try:
+        import urllib.request
+        import xml.etree.ElementTree as ET
+        
+        query_url = f"http://export.arxiv.org/api/query?search_query=all:{sub_question.replace(' ', '+')}&start=0&max_results=1"
+        response = urllib.request.urlopen(query_url)
+        xml_data = response.read()
+        
+        root = ET.fromstring(xml_data)
+        ns = {'arxiv': 'http://www.w3.org/2005/Atom'}
+        entry = root.find('arxiv:entry', ns)
+        
+        if entry is not None:
+            title = entry.find('arxiv:title', ns).text.strip().replace('\n', ' ')
+            url = entry.find('arxiv:id', ns).text.strip()
+            raw_text = entry.find('arxiv:summary', ns).text.strip().replace('\n', ' ')
+        else:
+            title = f"No arXiv paper found for {sub_question}"
+            url = ""
+            raw_text = "No paper content found."
+    except Exception as e:
+        title = f"arXiv query: {sub_question}"
+        url = "https://arxiv.org"
+        raw_text = f"[arXiv API Error/Fallback: {str(e)}]"
+
     eid = store_evidence(sub_question, "arxiv", title, url, raw_text)
     return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="arxiv")
 
+def fetch_web_source(sub_question: str) -> EvidenceMetadata:
+    """Performs a web search via DuckDuckGo search wrapper."""
+    try:
+        from duckduckgo_search import DDGS
+        results = list(DDGS().text(sub_question, max_results=1))
+        if results:
+            title = results[0].get('title', f"Web search for {sub_question}")
+            url = results[0].get('href', '')
+            raw_text = results[0].get('body', '')
+        else:
+            title = f"Web result for {sub_question}"
+            url = ""
+            raw_text = "No web search results."
+    except Exception as e:
+        title = f"Web Search for {sub_question}"
+        url = ""
+        raw_text = f"[Web Search Error/Fallback: {str(e)}]"
+
+    eid = store_evidence(sub_question, "web", title, url, raw_text)
+    return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="web")
+
 
 # Execution / Test Block
-
 if __name__ == "__main__":
     init_db()
-    print("Database initialized.")
+    print(f"Database initialized at: {DB_PATH}")
     
-    # Test retrieval
     meta = fetch_wikipedia_source("Agentic AI Architectures")
     print("Retrieved & Persisted Evidence:", meta.model_dump())
