@@ -212,7 +212,7 @@ component is still an LLM agent, which is what SRS 2.3 and req. 3.5.1 ask for.
 |---|---|
 | SRS (Sept 20, 2026). Authoritative for requirements. | Submitted. Not in the repo yet. |
 | SDD (Sept 20, 2026). Authoritative for design. | Submitted. Not in the repo yet. |
-| `schemas.py`. Authoritative for the agent I/O contract (Samit, Oct 11). | Not in the repo yet |
+| `schemas.py`. Authoritative for the agent I/O contract (Samit, Oct 11). | In the repo. |
 | `docs/adr/0001` to `0006`. One decision each, with the rejected alternative. | In the repo. ADR-0005 is marked superseded on loop ordering; see open item 8. |
 
 If this file disagrees with the SRS, SDD or `schemas.py`, they are right and
