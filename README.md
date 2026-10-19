@@ -168,6 +168,15 @@ prefilled with their defaults:
 - `SP201_MAX_REVISIONS`: cap on revision cycles per question. Default 1
   (req. 3.6.2).
 
+How `.env` gets loaded depends on how you start the code.
+`python manager_agent.py` calls `load_dotenv()` (from `python-dotenv`, pinned
+in `requirements.txt`) at the top of `main()`, which reads `.env` from the
+current directory, so run it from the project root. Variables already set in
+the shell win over the file; `load_dotenv()` does not override them. The test
+suite does not load `.env`; its tests set and clear variables explicitly. Once
+the pipeline is packaged as an ADK agent directory, `adk run` and `adk web`
+will load `.env` on their own; that packaging does not exist yet.
+
 ## Open items
 
 Tracked here until the repo has issues set up. Items 1 to 3 are also in SRS
@@ -179,7 +188,7 @@ Appendix B.
 | 2 | Live free-tier rate limits | Team | Open. Read from AI Studio and record with the date before the first evaluation run. |
 | 3 | Whether the Fact-Checker delegates entailment to a local classifier (req. 3.5.1) | Team | Open. Decide on measured call counts (req. 3.9.5), not preference. |
 | 4 | Value of `PASS_ALLOWS_PARTIAL` in `schemas.py` | Team | Open. Currently `False`; not formally agreed. |
-| 5 | What `AgentTool(Search)` returns per call and who assembles `SearchResults` | Jackson, Raul | Open. Settle before Manager and Search are integrated. Per-sub-question dispatch itself is settled (3.2.1, SDD 5.1). |
+| 5 | What `AgentTool(Search)` returns per call and who assembles `SearchResults` | Jackson, Raul | Open. Settle before Manager and Search are integrated. Per-sub-question dispatch itself is settled (3.2.1, SDD 5.1). Answered empirically 10/18: `search_agent.py` returns `EvidenceMetadata` with string IDs; conflicts with `schemas.py` and SDD 6.2 on ID type, table columns, and status signalling (3.2.3). Team decision pending. |
 | 6 | Pinned `google-adk` version missing from the SDD dependency table | Jackson | Open. `requirements.txt` says `2.9.2`; install, run `pip show google-adk`, record what resolves. |
 | 7 | Very large pages: full text in SQLite or the ADK artifact service | Samit | Open. Not in SRS Appendix B. |
 | 8 | ADR-0005 contradicts the SDD on loop ordering | Jackson | Open. Write ADR-0007 and mark ADR-0005 superseded on that point. Needed before the loop is built (week ending 11/01). |
@@ -199,7 +208,8 @@ component is still an LLM agent, which is what SRS 2.3 and req. 3.5.1 ask for.
 - No credentials in the repository (3.7.7). Use environment variables, keep
   `.env.example` free of secrets, keep `.env` in `.gitignore`.
 - Put requirement numbers in commit messages, docstrings and test names. A
-  test for 3.6.6 should turn up when you search for `3.6.6`.
+  Test names use underscores, so `pytest -k 3_6_6` runs every test for that
+  requirement.
 - Import session-state keys from `schemas.py`. Do not type `"manager_plan"`
   at a call site.
 - One numbered ADR per decision in `docs/adr/`. Reversing a decision means a
