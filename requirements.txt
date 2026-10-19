@@ -4,3 +4,7 @@
 
 google-adk==2.9.2
 pydantic==2.13.5
+python-dotenv==1.2.4
+
+# Tests: python -m pytest tests
+pytest==9.1.1
