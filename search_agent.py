@@ -59,10 +59,19 @@ def store_evidence(query_topic: str, source_type: str, title: str, url: str, con
 
 # Search Tool Functions
 # ---------------------------------------------------------------------------
+# Wikipedia answers the wikipedia package's default User-Agent with a 429
+# ("too many requests"), so every fetch failed. A descriptive agent fixes it.
+WIKIPEDIA_USER_AGENT = (
+    "SP201-multi-agent-research/0.1 "
+    "(KSU CS 4850 senior project; https://github.com/Multi-Agent-Research/sp-201-multi-agent-research)"
+)
+ARXIV_TIMEOUT_SECONDS = 30
+
 def fetch_wikipedia_source(sub_question: str) -> EvidenceMetadata:
     """Performs a 2-step Wikipedia search to locate the relevant page and extract text."""
     try:
         import wikipedia
+        wikipedia.set_user_agent(WIKIPEDIA_USER_AGENT)
         search_results = wikipedia.search(sub_question)
         if search_results:
             page_title = search_results[0]
@@ -89,7 +98,7 @@ def fetch_arxiv_source(sub_question: str) -> EvidenceMetadata:
         import xml.etree.ElementTree as ET
         
         query_url = f"http://export.arxiv.org/api/query?search_query=all:{sub_question.replace(' ', '+')}&start=0&max_results=1"
-        response = urllib.request.urlopen(query_url)
+        response = urllib.request.urlopen(query_url, timeout=ARXIV_TIMEOUT_SECONDS)
         xml_data = response.read()
         
         root = ET.fromstring(xml_data)
