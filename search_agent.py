@@ -1,73 +1,57 @@
 import os
-import sqlite3
-import uuid
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, Field
 
+from evidence_store import EvidenceStore, DEFAULT_DB_PATH
+from schemas import EvidenceRecord, SourceType
 
-# Database Configuration & Absolute Path
+# Timestamp helper matching EvidenceStore format
+def utc_now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-DB_PATH = Path(__file__).resolve().parent / "evidence_store.db"
-
-def init_db():
-    """Creates the SQLite evidence table at a single, fixed path."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS evidence (
-            evidence_id TEXT PRIMARY KEY,
-            query_topic TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            title TEXT NOT NULL,
-            url TEXT,
-            raw_content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    conn.commit()
-    conn.close()
-
-
-# Pydantic Schemas
+# Pydantic Schemas for Search Agent Output
 
 class EvidenceMetadata(BaseModel):
-    evidence_id: str = Field(description="Unique identifier stored in SQLite")
+    evidence_id: int = Field(description="Unique integer identifier stored in SQLite EvidenceStore")
     title: str = Field(description="Title of the source article or document")
     url: str = Field(description="Source URL or reference link")
     source_type: str = Field(description="Origin: wikipedia, arxiv, or web")
 
 class SearchResponse(BaseModel):
+    sub_question_id: int
     sub_question: str
     retrieved_evidence: list[EvidenceMetadata]
 
-# Database Persistence Helper
+# Database Persistence Helper using Samit's EvidenceStore
 
-def store_evidence(query_topic: str, source_type: str, title: str, url: str, content: str) -> str:
-    """Inserts raw search text into SQLite using DB_PATH and returns a reference ID."""
-    evidence_id = f"EVID-{uuid.uuid4().hex[:8].upper()}"
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def store_evidence(question_id: int, sub_question_id: int, source_type: str, title: str, url: str, content: str) -> int:
+    """Inserts raw search text into SQLite using Samit's EvidenceStore.add_evidence and returns an integer ID."""
+    store = EvidenceStore()
     
-    cursor.execute("""
-        INSERT INTO evidence (evidence_id, query_topic, source_type, title, url, raw_content)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (evidence_id, query_topic, source_type, title, url, content))
+    record = EvidenceRecord(
+        sub_question_id=sub_question_id,
+        source_url=url,
+        source_title=title,
+        published_date="",
+        passage=content,
+        retrieved_at=utc_now(),
+        source_type=SourceType(source_type)
+    )
     
-    conn.commit()
-    conn.close()
-    return evidence_id
+    return store.add_evidence(question_id, record)
 
 # Search Tool Functions
 # ---------------------------------------------------------------------------
-# Wikipedia answers the wikipedia package's default User-Agent with a 429
-# ("too many requests"), so every fetch failed. A descriptive agent fixes it.
 WIKIPEDIA_USER_AGENT = (
     "SP201-multi-agent-research/0.1 "
     "(KSU CS 4850 senior project; https://github.com/Multi-Agent-Research/sp-201-multi-agent-research)"
 )
 ARXIV_TIMEOUT_SECONDS = 30
 
-def fetch_wikipedia_source(sub_question: str) -> EvidenceMetadata:
+def fetch_wikipedia_source(question_id: int, sub_question_id: int, sub_question: str) -> EvidenceMetadata:
     """Performs a 2-step Wikipedia search to locate the relevant page and extract text."""
     try:
         import wikipedia
@@ -88,15 +72,12 @@ def fetch_wikipedia_source(sub_question: str) -> EvidenceMetadata:
         url = f"https://en.wikipedia.org/wiki/Special:Search?search={sub_question.replace(' ', '+')}"
         raw_text = f"[Wikipedia API Error/Fallback: {str(e)}]"
 
-    eid = store_evidence(sub_question, "wikipedia", title, url, raw_text)
+    eid = store_evidence(question_id, sub_question_id, "wikipedia", title, url, raw_text)
     return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="wikipedia")
 
-def fetch_arxiv_source(sub_question: str) -> EvidenceMetadata:
+def fetch_arxiv_source(question_id: int, sub_question_id: int, sub_question: str) -> EvidenceMetadata:
     """Queries arXiv API for academic papers related to the sub-question."""
     try:
-        import urllib.request
-        import xml.etree.ElementTree as ET
-        
         query_url = f"http://export.arxiv.org/api/query?search_query=all:{sub_question.replace(' ', '+')}&start=0&max_results=1"
         response = urllib.request.urlopen(query_url, timeout=ARXIV_TIMEOUT_SECONDS)
         xml_data = response.read()
@@ -118,10 +99,10 @@ def fetch_arxiv_source(sub_question: str) -> EvidenceMetadata:
         url = "https://arxiv.org"
         raw_text = f"[arXiv API Error/Fallback: {str(e)}]"
 
-    eid = store_evidence(sub_question, "arxiv", title, url, raw_text)
+    eid = store_evidence(question_id, sub_question_id, "arxiv", title, url, raw_text)
     return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="arxiv")
 
-def fetch_web_source(sub_question: str) -> EvidenceMetadata:
+def fetch_web_source(question_id: int, sub_question_id: int, sub_question: str) -> EvidenceMetadata:
     """Performs a web search via DuckDuckGo search wrapper."""
     try:
         from duckduckgo_search import DDGS
@@ -139,15 +120,24 @@ def fetch_web_source(sub_question: str) -> EvidenceMetadata:
         url = ""
         raw_text = f"[Web Search Error/Fallback: {str(e)}]"
 
-    eid = store_evidence(sub_question, "web", title, url, raw_text)
+    eid = store_evidence(question_id, sub_question_id, "web", title, url, raw_text)
     return EvidenceMetadata(evidence_id=eid, title=title, url=url, source_type="web")
 
 
 # Execution / Test Block
 
 if __name__ == "__main__":
-    init_db()
-    print(f"Database initialized at: {DB_PATH}")
+    store = EvidenceStore()
+    q_id = store.add_question("Test Research Question")
+    # Simulate adding a sub-question plan mapping (plan_number 1)
+    # Usually handled by add_sub_questions, but for quick standalone test:
+    with store.connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO sub_question (question_id, plan_number, text) VALUES (?, ?, ?)",
+            (q_id, 1, "Agentic AI Architectures")
+        )
+        
+    print(f"Database initialized at: {store.db_path}")
     
-    meta = fetch_wikipedia_source("Agentic AI Architectures")
+    meta = fetch_wikipedia_source(question_id=q_id, sub_question_id=1, sub_question="Agentic AI Architectures")
     print("Retrieved & Persisted Evidence:", meta.model_dump())
